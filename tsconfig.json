@@ -1,0 +1,38 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "useDefineForClassFields": true,
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "lib": ["ES2022", "DOM", "DOM.Iterable", "WebWorker"],
+    "strict": true,
+    "jsx": "react-jsx",
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "noEmit": true,
+    "allowSyntheticDefaultImports": true,
+    "resolveJsonModule": true,
+    "types": ["chrome"],
+    "baseUrl": ".",
+    "paths": {
+      "@sidepanel/*": ["extension/sidepanel/src/*"],
+      "@ai/*": ["extension/ai/*"],
+      "@storage/*": ["extension/storage/*"],
+      "@common/*": ["extension/common/*"]
+    }
+  },
+  "include": [
+    "extension/**/*.ts",
+    "extension/**/*.tsx",
+    "tests/**/*.ts",
+    "tests/**/*.tsx",
+    "vite.config.ts",
+    "tailwind.config.cjs",
+    "postcss.config.cjs"
+  ],
+  "exclude": [
+    "dist",
+    "node_modules"
+  ]
+}

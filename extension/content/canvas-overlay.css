@@ -1,0 +1,71 @@
+#__scribbly-overlay__ {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483647;
+  pointer-events: none;
+  display: none;
+}
+
+#__scribbly-overlay__[data-visible='true'] {
+  display: block;
+}
+
+#__scribbly-overlay-canvas__ {
+  width: 100vw;
+  height: 100vh;
+  pointer-events: auto;
+  touch-action: none;
+  cursor: crosshair;
+}
+
+#__scribbly-toolbar__ {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px;
+  border-radius: 12px;
+  background: rgba(15, 23, 42, 0.9);
+  color: white;
+  pointer-events: auto;
+  box-shadow: 0 12px 24px rgba(15, 23, 42, 0.3);
+  backdrop-filter: blur(8px);
+}
+
+#__scribbly-toolbar__ button {
+  appearance: none;
+  border: none;
+  background: rgba(203, 213, 225, 0.16);
+  color: inherit;
+  border-radius: 8px;
+  font-size: 16px;
+  padding: 6px 10px;
+  cursor: pointer;
+  transition: background 0.2s ease, transform 0.2s ease;
+}
+
+#__scribbly-toolbar__ button:hover {
+  background: rgba(59, 130, 246, 0.5);
+  transform: translateY(-1px);
+}
+
+#__scribbly-toolbar__ button.active {
+  background: #2563eb;
+}
+
+#__scribbly-toolbar__ hr {
+  width: 100%;
+  border: none;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.2);
+  margin: 4px 0;
+}
+
+.scribbly-selection-rect {
+  position: fixed;
+  border: 2px dashed rgba(37, 99, 235, 0.8);
+  background: rgba(37, 99, 235, 0.15);
+  pointer-events: none;
+  z-index: 2147483647;
+}

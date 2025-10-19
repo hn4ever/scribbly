@@ -1,0 +1,72 @@
+{
+  "manifest_version": 3,
+  "name": "Scribbly",
+  "short_name": "Scribbly",
+  "version": "1.0.0",
+  "description": "Draw on any page, capture text via highlights or rectangles, and summarize everything with on-device AI.",
+  "minimum_chrome_version": "126",
+  "offline_enabled": true,
+  "action": {
+    "default_title": "Scribbly",
+    "default_popup": "popup/index.html",
+    "default_icon": {
+      "16": "icons/scribbly-16.png",
+      "32": "icons/scribbly-32.png",
+      "48": "icons/scribbly-48.png",
+      "128": "icons/scribbly-128.png"
+    }
+  },
+  "background": {
+    "service_worker": "background/service-worker.js",
+    "type": "module"
+  },
+  "permissions": ["storage", "activeTab", "scripting"],
+  "host_permissions": ["<all_urls>"],
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content/canvas-overlay.js"],
+      "css": ["content/canvas-overlay.css"],
+      "run_at": "document_idle"
+    }
+  ],
+  "side_panel": {
+    "default_path": "sidepanel/index.html"
+  },
+  "icons": {
+    "16": "icons/scribbly-16.png",
+    "32": "icons/scribbly-32.png",
+    "48": "icons/scribbly-48.png",
+    "128": "icons/scribbly-128.png"
+  },
+  "commands": {
+    "toggle-overlay": {
+      "suggested_key": {
+        "default": "Alt+Shift+S",
+        "mac": "Option+Shift+S"
+      },
+      "description": "Toggle the Scribbly drawing overlay"
+    }
+  },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'; base-uri 'self';"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": ["assets/*"],
+      "matches": ["<all_urls>"]
+    }
+  ],
+  "origin_trials": [
+    {
+      "feature": "WriterAPI",
+      "expiry": "2024-12-31",
+      "tokens": ["REPLACE_WITH_WRITER_API_TOKEN"]
+    },
+    {
+      "feature": "RewriterAPI",
+      "expiry": "2024-12-31",
+      "tokens": ["REPLACE_WITH_REWRITER_API_TOKEN"]
+    }
+  ]
+}

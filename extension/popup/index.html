@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;"
+    />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Scribbly Controls</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <main>
+      <h1>Scribbly</h1>
+      <section>
+        <button id="toggle-overlay">Toggle Overlay</button>
+        <button id="open-sidepanel">Open Side Panel</button>
+      </section>
+      <section>
+        <label class="mode">
+          <span>Default mode</span>
+          <select id="mode">
+            <option value="on-device">On-device</option>
+            <option value="cloud">Cloud (opt-in)</option>
+          </select>
+        </label>
+        <label class="cloud">
+          <span>Cloud API key</span>
+          <input id="api-key" type="password" placeholder="Gemini / Firebase key" />
+        </label>
+      </section>
+    </main>
+    <script type="module" src="./src/main.ts"></script>
+  </body>
+</html>

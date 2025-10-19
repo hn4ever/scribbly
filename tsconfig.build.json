@@ -1,0 +1,24 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "outDir": "dist",
+    "declaration": false,
+    "sourceMap": false,
+    "removeComments": true
+  },
+  "include": [
+    "extension/background/**/*.ts",
+    "extension/content/**/*.ts",
+    "extension/ai/**/*.ts",
+    "extension/storage/**/*.ts",
+    "extension/common/**/*.ts",
+    "extension/popup/**/*.ts"
+  ],
+  "exclude": [
+    "**/*.test.ts",
+    "**/*.test.tsx",
+    "**/*.spec.ts",
+    "**/*.spec.tsx"
+  ]
+}

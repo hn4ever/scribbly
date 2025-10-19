@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Scribbly Demo Page</title>
+    <style>
+      body {
+        font-family: system-ui, sans-serif;
+        line-height: 1.6;
+        margin: 0;
+        padding: 40px;
+        background: #f5f5f5;
+        color: #0f172a;
+      }
+      main {
+        max-width: 760px;
+        margin: 0 auto;
+        background: white;
+        border-radius: 16px;
+        box-shadow: 0 30px 60px rgba(15, 23, 42, 0.1);
+        padding: 32px;
+      }
+      h1 {
+        margin-top: 0;
+        font-size: 32px;
+        color: #1e3a8a;
+      }
+      blockquote {
+        border-left: 4px solid #2563eb;
+        background: rgba(37, 99, 235, 0.08);
+        padding: 12px 16px;
+        margin-left: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Try Scribbly here</h1>
+      <p>
+        Use this page to experiment with Scribbly&apos;s drawing tools. Activate the overlay from the
+        toolbar or the popup, draw a rectangle around any paragraph, or simply highlight the text
+        you want summarized. Scribbly routes the selection to the on-device Summarizer API when
+        available.
+      </p>
+      <h2>Long-form sample content</h2>
+      <p>
+        The Scribbly extension demonstrates how the new on-device models in Chrome can deliver
+        privacy-preserving productivity helpers. Because the models run locally, none of the
+        highlighted text leaves your machine unless you explicitly switch to cloud fallback mode and
+        supply an API key. Even then, Scribbly annotates each summary with the mode it used so you
+        can keep track of where your data flows.
+      </p>
+      <blockquote>
+        “On-device AI keeps user data grounded. By downloading models proactively, the browser can
+        offer real-time assistance without relying on servers.”
+      </blockquote>
+      <p>
+        Try drawing shapes, switching tools, and undoing strokes. When you draw a rectangle, Scribbly
+        uses the coordinates to extract a text range before sending it to the Summarizer. You can
+        open the side panel to review summaries, copy combined highlights, and adjust settings.
+      </p>
+      <p>
+        To view the state of downloaded models, open <code>chrome://on-device-internals</code> in
+        Chrome Canary. You can clear the local database by removing the extension or wiping the
+        IndexedDB entry named <strong>scribbly</strong>.
+      </p>
+    </main>
+  </body>
+</html>

@@ -1,0 +1,57 @@
+{
+  "name": "scribbly",
+  "version": "1.0.0",
+  "description": "Scribbly Manifest V3 extension with on-device AI overlays and summaries.",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "clean": "rimraf dist",
+    "dev": "vite dev --host --open /sidepanel/index.html",
+    "build": "npm run clean && npm run build:ts && npm run build:sidepanel && npm run copy:static",
+    "build:sidepanel": "vite build",
+    "build:ts": "tsc -p tsconfig.build.json",
+    "copy:static": "node scripts/copy-static.mjs",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint . --ext .ts,.tsx",
+    "test": "npm run test:unit && npm run test:e2e",
+    "test:unit": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "playwright test",
+    "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,css,md}\""
+  },
+  "dependencies": {
+    "classnames": "^2.5.1",
+    "idb": "^7.1.1",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "zustand": "^4.5.2"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.42.0",
+    "@types/chrome": "^0.0.273",
+    "@types/node": "^20.11.17",
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.1",
+    "autoprefixer": "^10.4.17",
+    "@typescript-eslint/eslint-plugin": "^6.21.0",
+    "@typescript-eslint/parser": "^6.21.0",
+    "eslint": "^8.57.0",
+    "eslint-config-prettier": "^9.1.0",
+    "eslint-plugin-import": "^2.29.1",
+    "eslint-plugin-jsx-a11y": "^6.8.0",
+    "eslint-plugin-react": "^7.34.3",
+    "eslint-plugin-react-hooks": "^4.6.0",
+    "postcss": "^8.4.35",
+    "prettier": "^3.2.5",
+    "rimraf": "^5.0.5",
+    "tailwindcss": "^3.4.3",
+    "tslib": "^2.6.2",
+    "typescript": "^5.4.3",
+    "vite": "^5.1.5",
+    "vitest": "^1.4.0"
+  },
+  "engines": {
+    "node": ">=18.17.0"
+  }
+}
