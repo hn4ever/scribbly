@@ -13,6 +13,8 @@ const TOOLBAR_ID = '__scribbly-toolbar__';
 const PEN_COLOR = '#2563eb';
 const HIGHLIGHTER_COLOR = 'rgba(250, 204, 21, 0.35)';
 const ERASER_SIZE = 24;
+const RECTANGLE_STROKE_COLOR = '#22d3ee';
+const RECTANGLE_FILL_COLOR = 'rgba(34, 211, 238, 0.12)';
 
 function sendMessage<T = unknown>(message: unknown): Promise<T | undefined> {
   return new Promise((resolve, reject) => {
@@ -37,6 +39,7 @@ class ScribblyOverlay {
   private strokes: DrawingStroke[] = [];
   private strokeStack: DrawingStroke[] = [];
   private currentStroke: DrawingStroke | null = null;
+  private currentRect: { start: { x: number; y: number }; current: { x: number; y: number } } | null = null;
   private displayRect: HTMLDivElement;
   private rectStart: { x: number; y: number } | null = null;
   private drawingId: string | null = null;
@@ -149,7 +152,7 @@ class ScribblyOverlay {
 
     const { x, y } = this.getCanvasCoordinates(event);
     if (this.tool === 'rectangle') {
-      this.rectStart = { x, y };
+      this.currentRect = { start: { x, y }, current: { x, y } };
       this.displayRect.style.display = 'block';
       this.updateDisplayRect(x, y, 0, 0);
       return;
@@ -171,15 +174,18 @@ class ScribblyOverlay {
   private onPointerMove(event: PointerEvent) {
     if (!this.drawing) return;
     const coords = this.getCanvasCoordinates(event);
-    if (this.tool === 'rectangle' && this.rectStart) {
-      const width = coords.x - this.rectStart.x;
-      const height = coords.y - this.rectStart.y;
+    if (this.tool === 'rectangle' && this.currentRect) {
+      this.currentRect.current = coords;
+      const width = coords.x - this.currentRect.start.x;
+      const height = coords.y - this.currentRect.start.y;
       this.updateDisplayRect(
-        this.rectStart.x,
-        this.rectStart.y,
+        this.currentRect.start.x,
+        this.currentRect.start.y,
         width,
         height
       );
+      this.redraw();
+      this.drawRectanglePreview();
       return;
     }
 
@@ -193,11 +199,12 @@ class ScribblyOverlay {
     this.drawing = false;
     this.canvas.releasePointerCapture(event.pointerId);
 
-    if (this.tool === 'rectangle' && this.rectStart) {
+    if (this.tool === 'rectangle' && this.currentRect) {
       const { x, y } = this.getCanvasCoordinates(event);
-      const rect = this.buildRectPayload(this.rectStart, { x, y });
+      const rect = this.buildRectPayload(this.currentRect.start, { x, y });
       this.displayRect.style.display = 'none';
-      this.rectStart = null;
+      this.currentRect = null;
+      this.addRectangleStroke(rect);
       void this.extractAndSummarize(rect);
       return;
     }
@@ -287,6 +294,30 @@ class ScribblyOverlay {
     };
   }
 
+  private addRectangleStroke(rect: RectPayload) {
+    const points = [
+      { x: rect.x, y: rect.y },
+      { x: rect.x + rect.width, y: rect.y },
+      { x: rect.x + rect.width, y: rect.y + rect.height },
+      { x: rect.x, y: rect.y + rect.height },
+      { x: rect.x, y: rect.y }
+    ];
+
+    const stroke: DrawingStroke = {
+      id: crypto.randomUUID(),
+      color: RECTANGLE_STROKE_COLOR,
+      width: 2,
+      opacity: 1,
+      points,
+      tool: 'rectangle'
+    };
+    this.strokes.push(stroke);
+    this.strokeStack = [];
+    this.redraw();
+    this.drawRectangleFill(rect);
+    this.persistDrawing();
+  }
+
   private updateDisplayRect(x: number, y: number, width: number, height: number) {
     const rect = this.displayRect;
     const left = Math.min(x, x + width) - window.scrollX;
@@ -349,6 +380,9 @@ class ScribblyOverlay {
     } else if (stroke.tool === 'highlighter') {
       this.ctx.globalCompositeOperation = 'source-over';
       this.ctx.strokeStyle = stroke.color;
+    } else if (stroke.tool === 'rectangle') {
+      this.ctx.globalCompositeOperation = 'source-over';
+      this.ctx.strokeStyle = stroke.color;
     } else {
       this.ctx.globalCompositeOperation = 'source-over';
       this.ctx.strokeStyle = stroke.color;
@@ -358,6 +392,27 @@ class ScribblyOverlay {
     const path = this.createViewportPath(viewportPoints);
     this.ctx.stroke(path);
     this.ctx.restore();
+  }
+
+  private drawRectangleFill(rect: RectPayload) {
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.fillStyle = RECTANGLE_FILL_COLOR;
+    ctx.strokeStyle = RECTANGLE_STROKE_COLOR;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.rect(rect.x - window.scrollX, rect.y - window.scrollY, rect.width, rect.height);
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  private drawRectanglePreview() {
+    if (!this.currentRect) return;
+    const { start, current } = this.currentRect;
+    const rect = this.buildRectPayload(start, current);
+    this.drawRectangleFill(rect);
   }
 
   private redraw() {
