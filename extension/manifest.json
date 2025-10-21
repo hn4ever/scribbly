@@ -60,12 +60,12 @@
   "origin_trials": [
     {
       "feature": "WriterAPI",
-      "expiry": "2024-12-31",
+      "expiry": "2026-01-26",
       "tokens": ["REPLACE_WITH_WRITER_API_TOKEN"]
     },
     {
       "feature": "RewriterAPI",
-      "expiry": "2024-12-31",
+      "expiry": "2026-01-26",
       "tokens": ["REPLACE_WITH_REWRITER_API_TOKEN"]
     }
   ]

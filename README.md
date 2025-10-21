@@ -38,6 +38,14 @@ The on-device APIs only ship in Chrome Canary today.
 ]
 ```
 
+Create a `.env.local` (or `.env`) based on `.env.example` and add your tokens there:
+
+```bash
+cp .env.example .env.local
+```
+
+Fill in `SCRIBBLY_WRITER_ORIGIN_TRIAL_TOKEN` and `SCRIBBLY_REWRITER_ORIGIN_TRIAL_TOKEN`. The build script injects them into `dist/manifest.json`, keeping sensitive values outside the repo.
+
 ## Architecture (ASCII)
 
 ```

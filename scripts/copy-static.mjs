@@ -1,12 +1,15 @@
-import { cp, mkdir, stat } from 'node:fs/promises';
+import { cp, mkdir, readFile, stat, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { config as loadEnv } from 'dotenv';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, '..');
 
+loadEnv({ path: resolve(root, '.env.local'), override: true });
+loadEnv({ path: resolve(root, '.env'), override: false });
+
 const copies = [
-  ['extension/manifest.json', 'dist/manifest.json'],
   ['extension/content/canvas-overlay.css', 'dist/content/canvas-overlay.css'],
   ['extension/icons', 'dist/icons'],
   ['extension/assets', 'dist/assets'],
@@ -28,6 +31,7 @@ async function ensureCopy(fromRelative, toRelative) {
 
 async function run() {
   await Promise.all(copies.map(([from, to]) => ensureCopy(from, to)));
+  await buildManifest();
   await Promise.all([flattenHtml('sidepanel'), flattenHtml('popup')]);
 }
 
@@ -58,4 +62,35 @@ async function findExisting(paths) {
     }
   }
   return null;
+}
+
+async function buildManifest() {
+  const manifestPath = resolve(root, 'extension/manifest.json');
+  const outputPath = resolve(root, 'dist/manifest.json');
+  const manifestRaw = await readFile(manifestPath, 'utf8');
+  const manifest = JSON.parse(manifestRaw);
+
+  const writerToken = process.env.SCRIBBLY_WRITER_ORIGIN_TRIAL_TOKEN;
+  const rewriterToken = process.env.SCRIBBLY_REWRITER_ORIGIN_TRIAL_TOKEN;
+
+  if (Array.isArray(manifest.origin_trials)) {
+    manifest.origin_trials = manifest.origin_trials.map((trial) => {
+      if (trial.feature === 'WriterAPI') {
+        return {
+          ...trial,
+          tokens: writerToken ? [writerToken] : []
+        };
+      }
+      if (trial.feature === 'RewriterAPI') {
+        return {
+          ...trial,
+          tokens: rewriterToken ? [rewriterToken] : []
+        };
+      }
+      return trial;
+    });
+  }
+
+  await mkdir(dirname(outputPath), { recursive: true });
+  await writeFile(outputPath, JSON.stringify(manifest, null, 2));
 }
