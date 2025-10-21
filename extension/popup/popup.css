@@ -44,16 +44,6 @@ h1 {
   margin: 0;
   font-size: 18px;
 }
-section {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  background: rgba(15, 23, 42, 0.8);
-  border: 1px solid rgba(51, 65, 85, 0.8);
-  border-radius: 12px;
-  padding: 12px;
-}
-
 button,
 select,
 input {
@@ -81,4 +71,38 @@ label {
   gap: 6px;
   font-size: 13px;
   color: #cbd5f5;
+}
+
+section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: rgba(15, 23, 42, 0.8);
+  border: 1px solid rgba(51, 65, 85, 0.8);
+  border-radius: 12px;
+  padding: 12px;
+}
+
+.overlay-controls .toolbar-row {
+  display: flex;
+  gap: 8px;
+}
+
+.overlay-controls .toolbar-row button {
+  flex: 1;
+  padding: 8px 10px;
+  font-size: 18px;
+}
+
+.toggle-overlay {
+  width: 100%;
+}
+
+.brand + .overlay-controls {
+  margin-top: 8px;
+}
+
+.active-tool {
+  background: #1d4ed8;
+  border-color: #1d4ed8;
 }

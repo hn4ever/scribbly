@@ -72,23 +72,21 @@ async function buildManifest() {
 
   const writerToken = process.env.SCRIBBLY_WRITER_ORIGIN_TRIAL_TOKEN;
   const rewriterToken = process.env.SCRIBBLY_REWRITER_ORIGIN_TRIAL_TOKEN;
+  const enableOriginTrials = process.env.SCRIBBLY_ENABLE_ORIGIN_TRIALS === 'true';
 
-  if (Array.isArray(manifest.origin_trials)) {
-    manifest.origin_trials = manifest.origin_trials.map((trial) => {
-      if (trial.feature === 'WriterAPI') {
-        return {
-          ...trial,
-          tokens: writerToken ? [writerToken] : []
-        };
+  if (enableOriginTrials && writerToken && rewriterToken) {
+    manifest.origin_trials = [
+      {
+        feature: 'WriterAPI',
+        expiry: '2026-01-26',
+        tokens: [writerToken]
+      },
+      {
+        feature: 'RewriterAPI',
+        expiry: '2026-01-26',
+        tokens: [rewriterToken]
       }
-      if (trial.feature === 'RewriterAPI') {
-        return {
-          ...trial,
-          tokens: rewriterToken ? [rewriterToken] : []
-        };
-      }
-      return trial;
-    });
+    ];
   }
 
   await mkdir(dirname(outputPath), { recursive: true });

@@ -50,22 +50,13 @@ const overlayState = new Map<number, boolean>();
 let settingsCache: ScribblySettings = DEFAULT_SETTINGS;
 let capabilitiesCache: CapabilitySnapshot | null = null;
 
-chrome.runtime.onInstalled.addListener(() => {
-  if (chrome.sidePanel?.setPanelBehavior) {
-    void chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true });
-  }
-  void bootstrapState();
-});
-
-chrome.runtime.onStartup.addListener(() => {
-  void bootstrapState();
-});
+void bootstrapState();
 
 chrome.commands.onCommand.addListener(async (command) => {
   if (command !== 'toggle-overlay') return;
   const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
   if (!tab?.id) return;
-  const current = overlayState.get(tab.id) ?? true;
+  const current = overlayState.get(tab.id) ?? false;
   const next = !current;
   overlayState.set(tab.id, next);
   await chrome.tabs.sendMessage(tab.id, { type: 'scribbly:overlay-toggle', visible: next });
@@ -163,11 +154,34 @@ async function handleMessage(
         const current = overlayState.get(tabId) ?? false;
         const next = typeof message.visible === 'boolean' ? message.visible : !current;
         overlayState.set(tabId, next);
-        await chrome.tabs.sendMessage(tabId, {
+        await sendToTab(tabId, {
           type: 'scribbly:overlay-toggle',
           visible: next
         });
       }
+      return;
+    }
+    case 'scribbly:set-tool': {
+      const tabId = message.tabId ?? sender.tab?.id;
+      if (!tabId) return;
+      overlayState.set(tabId, true);
+      await sendToTab(tabId, {
+        type: 'scribbly:overlay-toggle',
+        visible: true
+      });
+      await sendToTab(tabId, {
+        type: 'scribbly:set-tool',
+        tool: message.tool
+      });
+      return;
+    }
+    case 'scribbly:overlay-command': {
+      const tabId = message.tabId ?? sender.tab?.id;
+      if (!tabId) return;
+      await sendToTab(tabId, {
+        type: 'scribbly:overlay-command',
+        command: message.command
+      });
       return;
     }
     case 'scribbly:fetch-drawings': {
@@ -301,6 +315,15 @@ function broadcast(message: ScribblyResponseMessage) {
       console.warn('[scribbly] broadcast failed', error.message);
     }
   });
+}
+
+async function sendToTab(tabId: number, message: unknown) {
+  try {
+    await chrome.tabs.sendMessage(tabId, message);
+  } catch (error) {
+    const err = error instanceof Error ? error.message : String(error);
+    console.warn('[scribbly] failed to send message to tab', tabId, err);
+  }
 }
 
 // Expose optional helpers to the popup if needed.

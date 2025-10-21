@@ -31,13 +31,15 @@ export interface SummaryRecord {
   mode: 'on-device' | 'cloud';
 }
 
+export type DrawingTool = 'pen' | 'highlighter' | 'eraser' | 'rectangle';
+
 export interface DrawingStroke {
   id: string;
   color: string;
   width: number;
   opacity: number;
   points: Array<{ x: number; y: number }>;
-  tool: 'pen' | 'highlighter' | 'eraser' | 'rectangle';
+  tool: DrawingTool;
 }
 
 export interface DrawingRecord {
@@ -76,7 +78,13 @@ export type ScribblyRequestMessage =
   | { type: 'scribbly:request-summary'; payload: SummaryRequestPayload }
   | { type: 'scribbly:save-drawing'; drawing: DrawingRecord }
   | { type: 'scribbly:toggle-overlay'; visible?: boolean; tabId?: number }
-  | { type: 'scribbly:fetch-drawings'; url: string };
+  | { type: 'scribbly:fetch-drawings'; url: string }
+  | { type: 'scribbly:set-tool'; tool: DrawingTool; tabId?: number }
+  | {
+      type: 'scribbly:overlay-command';
+      command: 'undo' | 'redo' | 'clear' | 'summarize-selection';
+      tabId?: number;
+    };
 
 export type ScribblyResponseMessage =
   | {

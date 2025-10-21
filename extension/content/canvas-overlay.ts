@@ -2,10 +2,9 @@ import type {
   DrawingRecord,
   DrawingStroke,
   RectPayload,
-  SummaryRequestPayload
+  SummaryRequestPayload,
+  DrawingTool
 } from '@common/messages';
-
-type Tool = 'pen' | 'highlighter' | 'eraser' | 'rectangle';
 
 const OVERLAY_ID = '__scribbly-overlay__';
 const CANVAS_ID = '__scribbly-overlay-canvas__';
@@ -33,7 +32,7 @@ class ScribblyOverlay {
   private canvas: HTMLCanvasElement;
   private ctx: CanvasRenderingContext2D;
   private toolbar: HTMLDivElement;
-  private tool: Tool = 'pen';
+  private tool: DrawingTool = 'pen';
   private drawing = false;
   private strokes: DrawingStroke[] = [];
   private strokeStack: DrawingStroke[] = [];
@@ -124,6 +123,14 @@ class ScribblyOverlay {
           this.loadDrawing(message.drawings[0]);
         }
       }
+      if (message?.type === 'scribbly:set-tool') {
+        this.toggle(true);
+        this.setTool(message.tool);
+      }
+      if (message?.type === 'scribbly:overlay-command') {
+        this.toggle(true);
+        this.runCommand(message.command);
+      }
     });
   }
 
@@ -205,12 +212,9 @@ class ScribblyOverlay {
     const target = event.target as HTMLElement | null;
     if (!target) return;
 
-    const tool = target.getAttribute('data-tool') as Tool | null;
+    const tool = target.getAttribute('data-tool') as DrawingTool | null;
     if (tool) {
-      this.tool = tool;
-      this.toolbar
-        .querySelectorAll('button[data-tool]')
-        .forEach((btn) => btn.classList.toggle('active', btn === target));
+      this.setTool(tool);
       return;
     }
 
@@ -412,11 +416,39 @@ class ScribblyOverlay {
   private show() {
     this.container.style.display = 'block';
     this.container.setAttribute('data-visible', 'true');
+    this.container.style.pointerEvents = 'auto';
   }
 
   private hide() {
     this.container.style.display = 'none';
     this.container.setAttribute('data-visible', 'false');
+    this.container.style.pointerEvents = 'none';
+  }
+
+  private setTool(tool: DrawingTool) {
+    this.tool = tool;
+    this.toolbar
+      .querySelectorAll<HTMLButtonElement>('button[data-tool]')
+      .forEach((btn) => btn.classList.toggle('active', btn.dataset.tool === tool));
+  }
+
+  private runCommand(command: 'undo' | 'redo' | 'clear' | 'summarize-selection') {
+    switch (command) {
+      case 'undo':
+        this.undo();
+        break;
+      case 'redo':
+        this.redo();
+        break;
+      case 'clear':
+        this.clear();
+        break;
+      case 'summarize-selection':
+        this.summarizeSelection();
+        break;
+      default:
+        break;
+    }
   }
 }
 

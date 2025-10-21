@@ -44,7 +44,7 @@ Create a `.env.local` (or `.env`) based on `.env.example` and add your tokens th
 cp .env.example .env.local
 ```
 
-Fill in `SCRIBBLY_WRITER_ORIGIN_TRIAL_TOKEN` and `SCRIBBLY_REWRITER_ORIGIN_TRIAL_TOKEN`. The build script injects them into `dist/manifest.json`, keeping sensitive values outside the repo.
+Fill in `SCRIBBLY_WRITER_ORIGIN_TRIAL_TOKEN` and `SCRIBBLY_REWRITER_ORIGIN_TRIAL_TOKEN`. Set `SCRIBBLY_ENABLE_ORIGIN_TRIALS=true` when you build for Chrome Canary 137+; leave it `false` (default) to skip injecting the optional manifest field on browsers that reject it. The build script reads these values and injects them into `dist/manifest.json`, keeping sensitive values outside the repo.
 
 ## Architecture (ASCII)
 
