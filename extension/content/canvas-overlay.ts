@@ -108,6 +108,7 @@ class ScribblyOverlay {
 
   private registerListeners() {
     window.addEventListener('resize', () => this.resize());
+    window.addEventListener('scroll', () => this.redraw());
     this.canvas.addEventListener('pointerdown', (event) => this.onPointerDown(event));
     this.canvas.addEventListener('pointermove', (event) => this.onPointerMove(event));
     this.canvas.addEventListener('pointerup', (event) => this.onPointerUp(event));
@@ -288,8 +289,10 @@ class ScribblyOverlay {
 
   private updateDisplayRect(x: number, y: number, width: number, height: number) {
     const rect = this.displayRect;
-    rect.style.left = `${Math.min(x, x + width)}px`;
-    rect.style.top = `${Math.min(y, y + height)}px`;
+    const left = Math.min(x, x + width) - window.scrollX;
+    const top = Math.min(y, y + height) - window.scrollY;
+    rect.style.left = `${left}px`;
+    rect.style.top = `${top}px`;
     rect.style.width = `${Math.abs(width)}px`;
     rect.style.height = `${Math.abs(height)}px`;
   }
@@ -325,10 +328,10 @@ class ScribblyOverlay {
     void sendMessage({ type: 'scribbly:request-summary', payload });
   }
 
-  private createStrokePath(stroke: DrawingStroke) {
+  private createViewportPath(points: Array<{ x: number; y: number }>) {
     const path = new Path2D();
-    if (stroke.points.length === 0) return path;
-    const [start, ...rest] = stroke.points;
+    if (points.length === 0) return path;
+    const [start, ...rest] = points;
     path.moveTo(start.x, start.y);
     rest.forEach((point) => path.lineTo(point.x, point.y));
     return path;
@@ -351,7 +354,8 @@ class ScribblyOverlay {
       this.ctx.strokeStyle = stroke.color;
     }
 
-    const path = this.createStrokePath(stroke);
+    const viewportPoints = stroke.points.map((point) => this.toViewportPoint(point));
+    const path = this.createViewportPath(viewportPoints);
     this.ctx.stroke(path);
     this.ctx.restore();
   }
@@ -362,10 +366,16 @@ class ScribblyOverlay {
   }
 
   private getCanvasCoordinates(event: PointerEvent) {
-    const rect = this.canvas.getBoundingClientRect();
     return {
-      x: event.clientX - rect.left,
-      y: event.clientY - rect.top
+      x: event.clientX + window.scrollX,
+      y: event.clientY + window.scrollY
+    };
+  }
+
+  private toViewportPoint(point: { x: number; y: number }) {
+    return {
+      x: point.x - window.scrollX,
+      y: point.y - window.scrollY
     };
   }
 
@@ -457,8 +467,13 @@ function extractTextFromRect(rect: RectPayload) {
   if (!selection) return '';
   selection.removeAllRanges();
 
-  const start = document.caretRangeFromPoint(rect.x + 1, rect.y + 1);
-  const end = document.caretRangeFromPoint(rect.x + rect.width - 1, rect.y + rect.height - 1);
+  const viewportStartX = rect.x - window.scrollX + 1;
+  const viewportStartY = rect.y - window.scrollY + 1;
+  const viewportEndX = rect.x - window.scrollX + rect.width - 1;
+  const viewportEndY = rect.y - window.scrollY + rect.height - 1;
+
+  const start = document.caretRangeFromPoint(viewportStartX, viewportStartY);
+  const end = document.caretRangeFromPoint(viewportEndX, viewportEndY);
   if (!start || !end) return '';
 
   const range = document.createRange();
