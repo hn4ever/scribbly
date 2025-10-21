@@ -17,11 +17,33 @@ main {
   gap: 12px;
 }
 
-h1 {
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.brand img {
+  width: 42px;
+  height: 42px;
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.2);
+  padding: 4px;
+}
+
+.brand h1 {
   margin: 0;
   font-size: 18px;
 }
 
+.brand + section {
+  margin-top: 8px;
+}
+
+h1 {
+  margin: 0;
+  font-size: 18px;
+}
 section {
   display: flex;
   flex-direction: column;

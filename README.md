@@ -152,6 +152,7 @@ npm run dev
 
 - `npm run dev` launches Vite for the side panel UI. Load the extension from `extension/` during development and use `npm run build` for a production bundle in `dist/`.
 - `npm run build` runs TypeScript compilation, Vite bundling, and copies manifest/static assets.
+- `npm run icons` regenerates the MV3 icon set from `extension/assets/scribbly-logo.png` if you update the brand artwork.
 - `npm run test:unit` uses Vitest with `happy-dom`.
 - `npm run test:e2e` runs Playwright against the demo page.
 - `npm run lint` / `npm run typecheck` enforce code quality. CI runs lint → typecheck → build → tests.
@@ -174,15 +175,6 @@ npm run dev
 - Drawings & summaries stay in IndexedDB (`scribbly` database) per origin.
 - Settings live in `chrome.storage.local` and never leave the device.
 - On-device AI is the default. Cloud mode is clearly labeled in the UI and each summary stores the mode used.
-
-## Submission checklist
-
-- [x] MV3 manifest with side panel, content script, background service worker, action popup
-- [x] On-device AI wrappers with feature detection and download monitoring
-- [x] IndexedDB persistence via `idb`
-- [x] React + Tailwind + Vite side panel, collapsible layout
-- [x] Vitest + Playwright tests and GitHub Actions CI
-- [x] README instructions, snippets, privacy disclosure, quickstart
 
 ## Quickstart
 
