@@ -10,11 +10,8 @@ const OVERLAY_ID = '__scribbly-overlay__';
 const CANVAS_ID = '__scribbly-overlay-canvas__';
 const TOOLBAR_ID = '__scribbly-toolbar__';
 
-const PEN_COLOR = '#2563eb';
 const HIGHLIGHTER_COLOR = 'rgba(250, 204, 21, 0.35)';
 const ERASER_SIZE = 24;
-const RECTANGLE_STROKE_COLOR = '#22d3ee';
-const RECTANGLE_FILL_COLOR = 'rgba(34, 211, 238, 0.12)';
 
 function sendMessage<T = unknown>(message: unknown): Promise<T | undefined> {
   return new Promise((resolve, reject) => {
@@ -36,13 +33,11 @@ class ScribblyOverlay {
   private toolbar: HTMLDivElement;
   private panel: HTMLDivElement;
   private panelBody: HTMLParagraphElement;
-  private tool: DrawingTool = 'pen';
+  private tool: DrawingTool = 'highlighter';
   private drawing = false;
   private strokes: DrawingStroke[] = [];
   private strokeStack: DrawingStroke[] = [];
   private currentStroke: DrawingStroke | null = null;
-  private currentRect: { start: { x: number; y: number }; current: { x: number; y: number } } | null = null;
-  private displayRect: HTMLDivElement;
   private drawingId: string | null = null;
   private visible = false;
 
@@ -55,11 +50,10 @@ class ScribblyOverlay {
     }
     this.ctx = context;
     this.toolbar = this.createToolbar();
-    this.displayRect = this.createRectDisplay();
     this.panel = this.createPanel();
     this.panelBody = this.panel.querySelector('.scribbly-panel-body') as HTMLParagraphElement;
 
-    this.container.append(this.canvas, this.displayRect, this.toolbar, this.panel);
+    this.container.append(this.canvas, this.toolbar, this.panel);
     document.documentElement.append(this.container);
     this.toolbar.querySelector(`button[data-tool="${this.tool}"]`)?.classList.add('active');
 
@@ -93,28 +87,11 @@ class ScribblyOverlay {
     toolbar.id = TOOLBAR_ID;
     toolbar.innerHTML = `
       <div class="scribbly-toolbar-grid">
-        <button data-tool="pen" aria-label="Pen">✏️</button>
         <button data-tool="highlighter" aria-label="Highlighter">🖍️</button>
-        <button data-tool="rectangle" aria-label="Rectangle">▭</button>
-      </div>
-      <div class="scribbly-toolbar-grid">
         <button data-tool="eraser" aria-label="Eraser">🧽</button>
-        <button data-action="undo" aria-label="Undo">↩︎</button>
-        <button data-action="redo" aria-label="Redo">↪︎</button>
-      </div>
-      <div class="scribbly-toolbar-actions">
-        <button data-action="clear" aria-label="Clear">🗑️</button>
-        <button data-action="summarize-selection" aria-label="Summarize selection">⚡</button>
       </div>
     `;
     return toolbar;
-  }
-
-  private createRectDisplay() {
-    const rect = document.createElement('div');
-    rect.className = 'scribbly-selection-rect';
-    rect.style.display = 'none';
-    return rect;
   }
 
   private createPanel() {
@@ -169,17 +146,10 @@ class ScribblyOverlay {
     this.drawing = true;
 
     const { x, y } = this.getCanvasCoordinates(event);
-    if (this.tool === 'rectangle') {
-      this.currentRect = { start: { x, y }, current: { x, y } };
-      this.displayRect.style.display = 'block';
-      this.updateDisplayRect(x, y, 0, 0);
-      return;
-    }
-
-    const width = this.tool === 'highlighter' ? 18 : this.tool === 'eraser' ? ERASER_SIZE : 4;
+    const width = this.tool === 'highlighter' ? 18 : ERASER_SIZE;
     const stroke: DrawingStroke = {
       id: crypto.randomUUID(),
-      color: this.tool === 'highlighter' ? HIGHLIGHTER_COLOR : PEN_COLOR,
+      color: HIGHLIGHTER_COLOR,
       width,
       opacity: this.tool === 'highlighter' ? 0.35 : 1,
       points: [{ x, y }],
@@ -192,21 +162,6 @@ class ScribblyOverlay {
   private onPointerMove(event: PointerEvent) {
     if (!this.drawing) return;
     const coords = this.getCanvasCoordinates(event);
-    if (this.tool === 'rectangle' && this.currentRect) {
-      this.currentRect.current = coords;
-      const width = coords.x - this.currentRect.start.x;
-      const height = coords.y - this.currentRect.start.y;
-      this.updateDisplayRect(
-        this.currentRect.start.x,
-        this.currentRect.start.y,
-        width,
-        height
-      );
-      this.redraw();
-      this.drawRectanglePreview();
-      return;
-    }
-
     if (!this.currentStroke) return;
     this.currentStroke.points.push(coords);
     this.drawStroke(this.currentStroke);
@@ -217,20 +172,20 @@ class ScribblyOverlay {
     this.drawing = false;
     this.canvas.releasePointerCapture(event.pointerId);
 
-    if (this.tool === 'rectangle' && this.currentRect) {
-      const { x, y } = this.getCanvasCoordinates(event);
-      const rect = this.buildRectPayload(this.currentRect.start, { x, y });
-      this.displayRect.style.display = 'none';
-      this.currentRect = null;
-      this.addRectangleStroke(rect);
-      void this.extractAndSummarize(rect);
-      return;
-    }
-
     if (!this.currentStroke) return;
-    this.strokes.push(this.currentStroke);
+    const completedStroke = this.currentStroke;
+    this.strokes.push(completedStroke);
     this.currentStroke = null;
     this.redraw();
+    if (completedStroke.tool === 'highlighter') {
+      const rect = this.rectFromPoints(completedStroke.points);
+      if (rect) {
+        const text = extractTextFromRect(rect);
+        if (text) {
+          this.updatePanelContent(text);
+        }
+      }
+    }
     this.persistDrawing();
   }
 
@@ -299,65 +254,6 @@ class ScribblyOverlay {
     });
   }
 
-  private buildRectPayload(
-    from: { x: number; y: number },
-    to: { x: number; y: number }
-  ): RectPayload {
-    const left = Math.min(from.x, to.x);
-    const top = Math.min(from.y, to.y);
-    return {
-      x: left,
-      y: top,
-      width: Math.abs(from.x - to.x),
-      height: Math.abs(from.y - to.y)
-    };
-  }
-
-  private addRectangleStroke(rect: RectPayload) {
-    const points = [
-      { x: rect.x, y: rect.y },
-      { x: rect.x + rect.width, y: rect.y },
-      { x: rect.x + rect.width, y: rect.y + rect.height },
-      { x: rect.x, y: rect.y + rect.height },
-      { x: rect.x, y: rect.y }
-    ];
-
-    const stroke: DrawingStroke = {
-      id: crypto.randomUUID(),
-      color: RECTANGLE_STROKE_COLOR,
-      width: 2,
-      opacity: 1,
-      points,
-      tool: 'rectangle'
-    };
-    this.strokes.push(stroke);
-    this.strokeStack = [];
-    this.redraw();
-    this.drawRectangleFill(rect);
-    this.persistDrawing();
-  }
-
-  private updateDisplayRect(x: number, y: number, width: number, height: number) {
-    const rect = this.displayRect;
-    const left = Math.min(x, x + width) - window.scrollX;
-    const top = Math.min(y, y + height) - window.scrollY;
-    rect.style.left = `${left}px`;
-    rect.style.top = `${top}px`;
-    rect.style.width = `${Math.abs(width)}px`;
-    rect.style.height = `${Math.abs(height)}px`;
-  }
-
-  private async extractAndSummarize(rect: RectPayload) {
-    const text = extractTextFromRect(rect);
-    if (!text) return;
-    this.updatePanelContent(text);
-    this.sendSummaryRequest({
-      text,
-      source: 'rectangle',
-      rect
-    });
-  }
-
   private sendSummaryRequest({
     text,
     source,
@@ -367,9 +263,10 @@ class ScribblyOverlay {
     source: SummaryRequestPayload['source'];
     rect?: RectPayload;
   }) {
+    const trimmedText = text.trim();
     const payload: SummaryRequestPayload = {
       requestId: crypto.randomUUID(),
-      text,
+      text: trimmedText,
       url: location.href,
       title: document.title,
       source,
@@ -397,10 +294,6 @@ class ScribblyOverlay {
     if (stroke.tool === 'eraser') {
       this.ctx.globalCompositeOperation = 'destination-out';
       this.ctx.strokeStyle = 'rgba(0,0,0,1)';
-    } else if (stroke.tool === 'highlighter') {
-      this.ctx.globalCompositeOperation = 'source-over';
-      this.ctx.strokeStyle = stroke.color;
-    } else if (stroke.tool === 'rectangle') {
       this.ctx.globalCompositeOperation = 'source-over';
       this.ctx.strokeStyle = stroke.color;
     } else {
@@ -411,34 +304,7 @@ class ScribblyOverlay {
     const viewportPoints = stroke.points.map((point) => this.toViewportPoint(point));
     const path = this.createViewportPath(viewportPoints);
     this.ctx.stroke(path);
-    if (stroke.tool === 'rectangle') {
-      const rect = this.rectFromPoints(stroke.points);
-      if (rect) {
-        this.drawRectangleFill(rect);
-      }
-    }
     this.ctx.restore();
-  }
-
-  private drawRectangleFill(rect: RectPayload) {
-    const ctx = this.ctx;
-    ctx.save();
-    ctx.globalCompositeOperation = 'source-over';
-    ctx.fillStyle = RECTANGLE_FILL_COLOR;
-    ctx.strokeStyle = RECTANGLE_STROKE_COLOR;
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.rect(rect.x - window.scrollX, rect.y - window.scrollY, rect.width, rect.height);
-    ctx.fill();
-    ctx.stroke();
-    ctx.restore();
-  }
-
-  private drawRectanglePreview() {
-    if (!this.currentRect) return;
-    const { start, current } = this.currentRect;
-    const rect = this.buildRectPayload(start, current);
-    this.drawRectangleFill(rect);
   }
 
   private redraw() {
@@ -544,23 +410,7 @@ class ScribblyOverlay {
   }
 
   private runCommand(command: 'undo' | 'redo' | 'clear' | 'summarize-selection') {
-    switch (command) {
-      case 'undo':
-        this.undo();
-        break;
-      case 'redo':
-        this.redo();
-        break;
-      case 'clear':
-        this.clear();
-        this.updatePanelContent('');
-        break;
-      case 'summarize-selection':
-        this.summarizeSelection();
-        break;
-      default:
-        break;
-    }
+    // no-op; toolbar commands removed
   }
 
   private updatePanelContent(text: string) {
@@ -576,24 +426,42 @@ class ScribblyOverlay {
 }
 
 function extractTextFromRect(rect: RectPayload) {
-  const selection = document.getSelection();
-  if (!selection) return '';
-  selection.removeAllRanges();
+  const collected: string[] = [];
+  const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, {
+    acceptNode(node) {
+      return node.textContent && node.textContent.trim()
+        ? NodeFilter.FILTER_ACCEPT
+        : NodeFilter.FILTER_REJECT;
+    }
+  });
 
-  const viewportStartX = rect.x - window.scrollX + 1;
-  const viewportStartY = rect.y - window.scrollY + 1;
-  const viewportEndX = rect.x - window.scrollX + rect.width - 1;
-  const viewportEndY = rect.y - window.scrollY + rect.height - 1;
+  const rectRight = rect.x + rect.width;
+  const rectBottom = rect.y + rect.height;
 
-  const start = document.caretRangeFromPoint(viewportStartX, viewportStartY);
-  const end = document.caretRangeFromPoint(viewportEndX, viewportEndY);
-  if (!start || !end) return '';
+  while (walker.nextNode()) {
+    const node = walker.currentNode as Text;
+    const range = document.createRange();
+    range.selectNodeContents(node);
+    const rects = range.getClientRects();
+    let intersects = false;
+    for (const client of Array.from(rects)) {
+      const left = client.left + window.scrollX;
+      const right = client.right + window.scrollX;
+      const top = client.top + window.scrollY;
+      const bottom = client.bottom + window.scrollY;
+      if (right < rect.x || left > rectRight || bottom < rect.y || top > rectBottom) {
+        continue;
+      }
+      intersects = true;
+      break;
+    }
+    range.detach();
+    if (intersects) {
+      collected.push(node.textContent ?? '');
+    }
+  }
 
-  const range = document.createRange();
-  range.setStart(start.startContainer, start.startOffset);
-  range.setEnd(end.startContainer, end.startOffset);
-  selection.addRange(range);
-  return range.toString().trim();
+  return collected.join(' ').replace(/\s+/g, ' ').trim();
 }
 
 function ensureOverlay() {
