@@ -24,21 +24,33 @@
   right: 16px;
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding: 12px;
-  border-radius: 12px;
-  background: rgba(15, 23, 42, 0.9);
-  color: white;
+  gap: 8px;
+  padding: 16px;
+  border-radius: 16px;
+  background: rgba(7, 187, 247, 0.95);
+  color: #0f172a;
   pointer-events: auto;
-  box-shadow: 0 12px 24px rgba(15, 23, 42, 0.3);
+  box-shadow: 0 18px 32px rgba(7, 187, 247, 0.35);
   backdrop-filter: blur(8px);
+}
+
+.scribbly-toolbar-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.scribbly-toolbar-actions {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
 }
 
 #__scribbly-toolbar__ button {
   appearance: none;
   border: none;
-  background: rgba(203, 213, 225, 0.16);
-  color: inherit;
+  background: rgba(15, 23, 42, 0.12);
+  color: #0f172a;
   border-radius: 8px;
   font-size: 16px;
   padding: 6px 10px;
@@ -47,19 +59,13 @@
 }
 
 #__scribbly-toolbar__ button:hover {
-  background: rgba(59, 130, 246, 0.5);
+  background: rgba(15, 23, 42, 0.25);
   transform: translateY(-1px);
 }
 
 #__scribbly-toolbar__ button.active {
-  background: #2563eb;
-}
-
-#__scribbly-toolbar__ hr {
-  width: 100%;
-  border: none;
-  border-bottom: 1px solid rgba(148, 163, 184, 0.2);
-  margin: 4px 0;
+  background: #1d4ed8;
+  color: #f8fafc;
 }
 
 .scribbly-selection-rect {
@@ -68,4 +74,39 @@
   background: rgba(37, 99, 235, 0.15);
   pointer-events: none;
   z-index: 2147483647;
+}
+
+#__scribbly-panel__ {
+  position: fixed;
+  top: calc(16px + 132px);
+  right: 16px;
+  width: 240px;
+  max-height: 220px;
+  padding: 16px;
+  border-radius: 16px;
+  background: rgba(7, 187, 247, 0.85);
+  color: #0f172a;
+  box-shadow: 0 18px 32px rgba(7, 187, 247, 0.35);
+  backdrop-filter: blur(6px);
+  pointer-events: auto;
+  overflow-y: auto;
+}
+
+.scribbly-panel-header {
+  margin: 0 0 8px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.scribbly-panel-body {
+  margin: 0;
+  font-size: 0.9rem;
+  line-height: 1.4;
+  white-space: pre-wrap;
+}
+
+.scribbly-panel-placeholder {
+  color: rgba(15, 23, 42, 0.55);
 }

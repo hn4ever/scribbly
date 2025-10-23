@@ -34,6 +34,8 @@ class ScribblyOverlay {
   private canvas: HTMLCanvasElement;
   private ctx: CanvasRenderingContext2D;
   private toolbar: HTMLDivElement;
+  private panel: HTMLDivElement;
+  private panelBody: HTMLParagraphElement;
   private tool: DrawingTool = 'pen';
   private drawing = false;
   private strokes: DrawingStroke[] = [];
@@ -41,7 +43,6 @@ class ScribblyOverlay {
   private currentStroke: DrawingStroke | null = null;
   private currentRect: { start: { x: number; y: number }; current: { x: number; y: number } } | null = null;
   private displayRect: HTMLDivElement;
-  private rectStart: { x: number; y: number } | null = null;
   private drawingId: string | null = null;
   private visible = false;
 
@@ -55,8 +56,10 @@ class ScribblyOverlay {
     this.ctx = context;
     this.toolbar = this.createToolbar();
     this.displayRect = this.createRectDisplay();
+    this.panel = this.createPanel();
+    this.panelBody = this.panel.querySelector('.scribbly-panel-body') as HTMLParagraphElement;
 
-    this.container.append(this.canvas, this.displayRect, this.toolbar);
+    this.container.append(this.canvas, this.displayRect, this.toolbar, this.panel);
     document.documentElement.append(this.container);
     this.toolbar.querySelector(`button[data-tool="${this.tool}"]`)?.classList.add('active');
 
@@ -89,15 +92,20 @@ class ScribblyOverlay {
     const toolbar = document.createElement('div');
     toolbar.id = TOOLBAR_ID;
     toolbar.innerHTML = `
-      <button data-tool="pen" aria-label="Pen">✏️</button>
-      <button data-tool="highlighter" aria-label="Highlighter">🖍️</button>
-      <button data-tool="rectangle" aria-label="Rectangle">▭</button>
-      <button data-tool="eraser" aria-label="Eraser">🧽</button>
-      <hr />
-      <button data-action="undo" aria-label="Undo">↩︎</button>
-      <button data-action="redo" aria-label="Redo">↪︎</button>
-      <button data-action="clear" aria-label="Clear">🗑️</button>
-      <button data-action="summarize-selection" aria-label="Summarize selection">⚡</button>
+      <div class="scribbly-toolbar-grid">
+        <button data-tool="pen" aria-label="Pen">✏️</button>
+        <button data-tool="highlighter" aria-label="Highlighter">🖍️</button>
+        <button data-tool="rectangle" aria-label="Rectangle">▭</button>
+      </div>
+      <div class="scribbly-toolbar-grid">
+        <button data-tool="eraser" aria-label="Eraser">🧽</button>
+        <button data-action="undo" aria-label="Undo">↩︎</button>
+        <button data-action="redo" aria-label="Redo">↪︎</button>
+      </div>
+      <div class="scribbly-toolbar-actions">
+        <button data-action="clear" aria-label="Clear">🗑️</button>
+        <button data-action="summarize-selection" aria-label="Summarize selection">⚡</button>
+      </div>
     `;
     return toolbar;
   }
@@ -107,6 +115,16 @@ class ScribblyOverlay {
     rect.className = 'scribbly-selection-rect';
     rect.style.display = 'none';
     return rect;
+  }
+
+  private createPanel() {
+    const panel = document.createElement('div');
+    panel.id = '__scribbly-panel__';
+    panel.innerHTML = `
+      <header class="scribbly-panel-header">Pinned Highlight</header>
+      <p class="scribbly-panel-body scribbly-panel-placeholder">Highlight text to pin it here.</p>
+    `;
+    return panel;
   }
 
   private registerListeners() {
@@ -273,6 +291,7 @@ class ScribblyOverlay {
     if (!selection) return;
     const text = selection.toString().trim();
     if (!text) return;
+    this.updatePanelContent(text);
     this.sendSummaryRequest({
       text,
       source: 'selection',
@@ -331,6 +350,7 @@ class ScribblyOverlay {
   private async extractAndSummarize(rect: RectPayload) {
     const text = extractTextFromRect(rect);
     if (!text) return;
+    this.updatePanelContent(text);
     this.sendSummaryRequest({
       text,
       source: 'rectangle',
@@ -391,6 +411,12 @@ class ScribblyOverlay {
     const viewportPoints = stroke.points.map((point) => this.toViewportPoint(point));
     const path = this.createViewportPath(viewportPoints);
     this.ctx.stroke(path);
+    if (stroke.tool === 'rectangle') {
+      const rect = this.rectFromPoints(stroke.points);
+      if (rect) {
+        this.drawRectangleFill(rect);
+      }
+    }
     this.ctx.restore();
   }
 
@@ -431,6 +457,26 @@ class ScribblyOverlay {
     return {
       x: point.x - window.scrollX,
       y: point.y - window.scrollY
+    };
+  }
+
+  private rectFromPoints(points: Array<{ x: number; y: number }>): RectPayload | null {
+    if (points.length < 2) return null;
+    let minX = Number.POSITIVE_INFINITY;
+    let minY = Number.POSITIVE_INFINITY;
+    let maxX = Number.NEGATIVE_INFINITY;
+    let maxY = Number.NEGATIVE_INFINITY;
+    points.forEach((point) => {
+      minX = Math.min(minX, point.x);
+      minY = Math.min(minY, point.y);
+      maxX = Math.max(maxX, point.x);
+      maxY = Math.max(maxY, point.y);
+    });
+    return {
+      x: minX,
+      y: minY,
+      width: maxX - minX,
+      height: maxY - minY
     };
   }
 
@@ -507,6 +553,7 @@ class ScribblyOverlay {
         break;
       case 'clear':
         this.clear();
+        this.updatePanelContent('');
         break;
       case 'summarize-selection':
         this.summarizeSelection();
@@ -514,6 +561,17 @@ class ScribblyOverlay {
       default:
         break;
     }
+  }
+
+  private updatePanelContent(text: string) {
+    if (!this.panelBody) return;
+    if (!text) {
+      this.panelBody.textContent = 'Highlight text to pin it here.';
+      this.panelBody.classList.add('scribbly-panel-placeholder');
+      return;
+    }
+    this.panelBody.textContent = text;
+    this.panelBody.classList.remove('scribbly-panel-placeholder');
   }
 }
 
