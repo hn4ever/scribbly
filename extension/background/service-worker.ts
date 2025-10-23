@@ -10,30 +10,6 @@ import {
   updateSummaryStatus,
   DEFAULT_SETTINGS
 } from '@storage/db';
-import {
-  getPromptAvailability,
-  isPromptSupported,
-  promptModel,
-  resetPromptSession
-} from '@ai/prompt';
-import {
-  getRewriterAvailability,
-  isRewriterSupported,
-  resetRewriterSession,
-  rewriteWithOnDeviceModel
-} from '@ai/rewriter';
-import {
-  getSummarizerAvailability,
-  isSummarizerSupported,
-  resetSummarizer,
-  summarizeText
-} from '@ai/summarizer';
-import {
-  getWriterAvailability,
-  isWriterSupported,
-  resetWriterSession,
-  writeWithOnDeviceModel
-} from '@ai/writer';
 import type {
   CapabilitySnapshot,
   DownloadState,
@@ -228,69 +204,15 @@ async function handleSummaryRequest(payload: SummaryRequestPayload) {
 }
 
 async function summarizeWithPreference(text: string) {
-  if (settingsCache.mode === 'cloud') {
-    if (!settingsCache.cloudApiKey) {
-      throw new Error('Cloud mode enabled without an API key. Update settings in the popup.');
-    }
-    return runGeminiFallback(text, settingsCache.cloudApiKey);
-  }
-
-  const summary = await summarizeText(text, {
-    onDownload: (state) => void updateCapability('summarizer', state)
-  });
-  return summary;
-}
-
-async function runGeminiFallback(text: string, apiKey: string) {
-  const endpoint =
-    'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent';
-  const response = await fetch(`${endpoint}?key=${apiKey}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      contents: [
-        {
-          role: 'user',
-          parts: [
-            {
-              text: `Summarize the following web selection in concise bullets:\n\n${text}`
-            }
-          ]
-        }
-      ]
-    })
-  });
-
-  if (!response.ok) {
-    throw new Error(`Cloud summarization failed: ${response.status} ${response.statusText}`);
-  }
-
-  const body = (await response.json()) as {
-    candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
-  };
-
-  const output = body.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
-  if (!output) {
-    throw new Error('Cloud summarization returned no content');
-  }
-  return output;
+  return text.trim();
 }
 
 async function refreshCapabilities(): Promise<CapabilitySnapshot> {
-  const summarizer = await getSummarizerAvailability();
-  const prompt = isPromptSupported() ? await getPromptAvailability() : disabledState('Prompt API');
-  const writer = settingsCache.enableWriter
-    ? await getWriterAvailability()
-    : disabledState('Writer disabled');
-  const rewriter = settingsCache.enableWriter
-    ? await getRewriterAvailability()
-    : disabledState('Rewriter disabled');
-
   capabilitiesCache = {
-    summarizer,
-    prompt,
-    writer,
-    rewriter
+    summarizer: disabledState('Summarizer not configured'),
+    prompt: disabledState('Prompt API not configured'),
+    writer: disabledState('Writer API not configured'),
+    rewriter: disabledState('Rewriter API not configured')
   };
   await saveCapabilitySnapshot(capabilitiesCache);
   broadcast({ type: 'scribbly:availability', capabilities: capabilitiesCache });
@@ -299,13 +221,6 @@ async function refreshCapabilities(): Promise<CapabilitySnapshot> {
 
 function disabledState(reason: string): DownloadState {
   return { status: 'unavailable', reason };
-}
-
-function updateCapability(key: keyof CapabilitySnapshot, state: DownloadState) {
-  if (!capabilitiesCache) return;
-  capabilitiesCache = { ...capabilitiesCache, [key]: state };
-  void saveCapabilitySnapshot(capabilitiesCache);
-  broadcast({ type: 'scribbly:availability', capabilities: capabilitiesCache });
 }
 
 function broadcast(message: ScribblyResponseMessage) {
@@ -324,30 +239,4 @@ async function sendToTab(tabId: number, message: unknown) {
     const err = error instanceof Error ? error.message : String(error);
     console.warn('[scribbly] failed to send message to tab', tabId, err);
   }
-}
-
-// Expose optional helpers to the popup if needed.
-export async function getPromptCompletion(prompt: string) {
-  const result = await promptModel(
-    [
-      { role: 'system', content: 'You are a helpful assistant.' },
-      { role: 'user', content: prompt }
-    ],
-    (state) => updateCapability('prompt', state)
-  );
-  return result;
-}
-
-export async function writerDraft(prompt: string) {
-  if (!settingsCache.enableWriter) {
-    throw new Error('Writer API is disabled in settings.');
-  }
-  return writeWithOnDeviceModel(prompt, (state) => updateCapability('writer', state));
-}
-
-export async function rewriterDraft(prompt: string, text: string) {
-  if (!settingsCache.enableWriter) {
-    throw new Error('Rewriter API is disabled in settings.');
-  }
-  return rewriteWithOnDeviceModel(prompt, text, (state) => updateCapability('rewriter', state));
 }

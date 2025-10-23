@@ -8,7 +8,6 @@ export default defineConfig({
   resolve: {
     alias: {
       '@sidepanel': resolve(__dirname, 'extension/sidepanel/src'),
-      '@ai': resolve(__dirname, 'extension/ai'),
       '@storage': resolve(__dirname, 'extension/storage')
     }
   },

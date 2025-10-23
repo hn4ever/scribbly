@@ -33,6 +33,7 @@ class ScribblyOverlay {
   private toolbar: HTMLDivElement;
   private panel: HTMLDivElement;
   private panelBody: HTMLParagraphElement;
+  private lastSummaryRequestId: string | null = null;
   private tool: DrawingTool = 'highlighter';
   private drawing = false;
   private strokes: DrawingStroke[] = [];
@@ -129,6 +130,16 @@ class ScribblyOverlay {
       if (message?.type === 'scribbly:overlay-command') {
         this.toggle(true);
         this.runCommand(message.command);
+      }
+      if (message?.type === 'scribbly:summary-ready' && message.summary?.url === location.href) {
+        if (!this.lastSummaryRequestId || message.summary.requestId === this.lastSummaryRequestId) {
+          this.updatePanelContent(formatSummaryAsBullets(message.summary.summary));
+        }
+      }
+      if (message?.type === 'scribbly:summary-progress' && message.status === 'error') {
+        if (!this.lastSummaryRequestId || message.requestId === this.lastSummaryRequestId) {
+          this.updatePanelContent('Unable to summarize this highlight.');
+        }
       }
     });
   }
@@ -264,6 +275,8 @@ class ScribblyOverlay {
     rect?: RectPayload;
   }) {
     const trimmedText = text.trim();
+    if (!trimmedText) return;
+    this.updatePanelContent('Summarizing highlight...');
     const payload: SummaryRequestPayload = {
       requestId: crypto.randomUUID(),
       text: trimmedText,
@@ -273,6 +286,7 @@ class ScribblyOverlay {
       rect,
       triggeredAt: Date.now()
     };
+    this.lastSummaryRequestId = payload.requestId;
     void sendMessage({ type: 'scribbly:request-summary', payload });
   }
 
@@ -462,6 +476,19 @@ function extractTextFromRect(rect: RectPayload) {
   }
 
   return collected.join(' ').replace(/\s+/g, ' ').trim();
+}
+
+function formatSummaryAsBullets(summary: string) {
+  if (!summary) return '';
+  const lines = summary
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  if (lines.length === 0) {
+    return summary.trim();
+  }
+  const normalized = lines.map((line) => (line.startsWith('-') ? line : `- ${line}`));
+  return normalized.join('\n');
 }
 
 function ensureOverlay() {

@@ -18,7 +18,6 @@ export default defineConfig([
       'process.env.NODE_ENV': JSON.stringify(process.env.NODE_ENV ?? 'production')
     },
     alias: {
-      '@ai': './extension/ai',
       '@common': './extension/common',
       '@storage': './extension/storage'
     }
@@ -40,7 +39,6 @@ export default defineConfig([
       'process.env.NODE_ENV': JSON.stringify(process.env.NODE_ENV ?? 'production')
     },
     alias: {
-      '@ai': './extension/ai',
       '@common': './extension/common',
       '@storage': './extension/storage'
     }
