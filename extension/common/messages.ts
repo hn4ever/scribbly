@@ -31,7 +31,7 @@ export interface SummaryRecord {
   mode: 'on-device' | 'cloud';
 }
 
-export type DrawingTool = 'highlighter' | 'eraser';
+export type DrawingTool = 'highlighter' | 'eraser' | 'rectangle';
 
 export interface DrawingStroke {
   id: string;
