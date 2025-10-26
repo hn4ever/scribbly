@@ -15,6 +15,7 @@ const HIGHLIGHTER_COLOR = 'rgba(250, 204, 21, 0.35)';
 const RECTANGLE_STROKE_COLOR = 'rgba(14, 165, 233, 0.95)';
 const RECTANGLE_FILL_COLOR = 'rgba(14, 165, 233, 0.2)';
 const ERASER_SIZE = 24;
+const PANEL_PLACEHOLDER_TEXT = 'Highlight or select text to get a summary.';
 
 function sendMessage<T = unknown>(message: unknown): Promise<T | undefined> {
   return new Promise((resolve, reject) => {
@@ -38,6 +39,8 @@ class ScribblyOverlay {
   private selectionRect: HTMLDivElement;
   private panel: HTMLDivElement;
   private panelBody: HTMLParagraphElement;
+  private panelSpinner: HTMLDivElement | null = null;
+  private summarizeLoading = false;
   private tool: DrawingTool = 'highlighter';
   private drawing = false;
   private strokes: DrawingStroke[] = [];
@@ -120,9 +123,14 @@ class ScribblyOverlay {
     const panel = document.createElement('div');
     panel.id = '__scribbly-panel__';
     panel.innerHTML = `
-      <header class="scribbly-panel-header">Pinned Highlight</header>
-      <p class="scribbly-panel-body scribbly-panel-placeholder">Highlight or draw a rectangle to capture text.</p>
+      <header class="scribbly-panel-header">Summary</header>
+      <div class="scribbly-panel-spinner" aria-hidden="true">
+        <span class="scribbly-spinner" aria-hidden="true"></span>
+        <span class="scribbly-spinner-text">Summarizing...</span>
+      </div>
+      <p class="scribbly-panel-body scribbly-panel-placeholder">${PANEL_PLACEHOLDER_TEXT}</p>
     `;
+    this.panelSpinner = panel.querySelector('.scribbly-panel-spinner');
     return panel;
   }
 
@@ -235,7 +243,6 @@ class ScribblyOverlay {
             preview: text.slice(0, 160),
             length: text.length,
           });
-            this.updatePanelContent(text);
             this.pendingSelection = { text, rect };
             const requestId = this.sendSummaryRequest({ text, source: 'rectangle', rect });
             if (requestId) this.lastSummaryRequestId = requestId;
@@ -266,7 +273,6 @@ class ScribblyOverlay {
             preview: text.slice(0, 160),
             length: text.length,
           });
-          this.updatePanelContent(text);
           this.pendingSelection = { text, rect };
           const requestId = this.sendSummaryRequest({ text, source: 'selection', rect });
           if (requestId) this.lastSummaryRequestId = requestId;
@@ -306,7 +312,6 @@ class ScribblyOverlay {
       length: text.length,
       rect,
     });
-    this.updatePanelContent(text);
     this.pendingSelection = { text, rect };
     const requestId = this.sendSummaryRequest({ text, source: 'selection', rect });
     if (requestId) this.lastSummaryRequestId = requestId;
@@ -319,7 +324,7 @@ class ScribblyOverlay {
       console.warn('[scribbly] Summarize button clicked without pending selection');
       return;
     }
-    this.updatePanelContent('Summarizing highlight...');
+    this.setSummarizeLoading(true);
     try {
       const summary = await summarizeText(latest);
       console.info('[scribbly] local summarizeText result', {
@@ -331,6 +336,8 @@ class ScribblyOverlay {
     } catch (error) {
       console.error('[scribbly] Summarizer API error', error);
       this.updatePanelContent('Unable to summarize this highlight.');
+    } finally {
+      this.setSummarizeLoading(false);
     }
   }
 
@@ -597,10 +604,24 @@ class ScribblyOverlay {
     this.updatePanelContent('');
   }
 
+  private setSummarizeLoading(loading: boolean) {
+    if (!this.summarizeButton) return;
+    this.summarizeLoading = loading;
+    this.summarizeButton.disabled = loading;
+    if (this.panelSpinner) {
+      this.panelSpinner.classList.toggle('visible', loading);
+      this.panelSpinner.setAttribute('aria-hidden', String(!loading));
+    }
+    if (loading && this.panelBody?.classList.contains('scribbly-panel-placeholder')) {
+      this.panelBody.textContent = '';
+      this.panelBody.classList.remove('scribbly-panel-placeholder');
+    }
+  }
+
   private updatePanelContent(text: string) {
     if (!this.panelBody) return;
     if (!text) {
-      this.panelBody.textContent = 'Highlight or draw a rectangle to capture text.';
+      this.panelBody.textContent = PANEL_PLACEHOLDER_TEXT;
       this.panelBody.classList.add('scribbly-panel-placeholder');
       return;
     }
