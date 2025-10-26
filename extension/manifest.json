@@ -20,7 +20,7 @@
     "service_worker": "background/service-worker.js",
     "type": "module"
   },
-  "permissions": ["storage", "activeTab", "scripting"],
+  "permissions": ["storage", "activeTab", "scripting", "summarizer"],
   "host_permissions": ["<all_urls>"],
   "content_scripts": [
     {

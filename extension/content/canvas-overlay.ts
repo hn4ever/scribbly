@@ -1,19 +1,19 @@
 import type {
   DrawingRecord,
   DrawingStroke,
-  DrawingTool,
   RectPayload,
-  SummaryRequestPayload
+  SummaryRequestPayload,
+  DrawingTool,
 } from '@common/messages';
+import { summarizeText } from '../ai/summarizer-api';
 
 const OVERLAY_ID = '__scribbly-overlay__';
 const CANVAS_ID = '__scribbly-overlay-canvas__';
 const TOOLBAR_ID = '__scribbly-toolbar__';
 
 const HIGHLIGHTER_COLOR = 'rgba(250, 204, 21, 0.35)';
-const RECTANGLE_FILL_COLOR = 'rgba(14, 165, 233, 0.18)';
-const RECTANGLE_BORDER_COLOR = '#0ea5e9';
-const RECTANGLE_BORDER_WIDTH = 3;
+const RECTANGLE_STROKE_COLOR = 'rgba(14, 165, 233, 0.95)';
+const RECTANGLE_FILL_COLOR = 'rgba(14, 165, 233, 0.2)';
 const ERASER_SIZE = 24;
 
 function sendMessage<T = unknown>(message: unknown): Promise<T | undefined> {
@@ -34,7 +34,8 @@ class ScribblyOverlay {
   private canvas: HTMLCanvasElement;
   private ctx: CanvasRenderingContext2D;
   private toolbar: HTMLDivElement;
-  private selectionOverlay: HTMLDivElement;
+  private summarizeButton: HTMLButtonElement;
+  private selectionRect: HTMLDivElement;
   private panel: HTMLDivElement;
   private panelBody: HTMLParagraphElement;
   private tool: DrawingTool = 'highlighter';
@@ -42,10 +43,14 @@ class ScribblyOverlay {
   private strokes: DrawingStroke[] = [];
   private strokeStack: DrawingStroke[] = [];
   private currentStroke: DrawingStroke | null = null;
-  private rectSelection: { start: { x: number; y: number }; current: { x: number; y: number } } | null = null;
+  private rectSelection: {
+    start: { x: number; y: number };
+    current: { x: number; y: number };
+  } | null = null;
+  private pendingSelection: { text: string; rect?: RectPayload } | null = null;
+  private lastSummaryRequestId: string | null = null;
   private drawingId: string | null = null;
   private visible = false;
-  private lastSummaryRequestId: string | null = null;
 
   constructor() {
     this.container = this.createContainer();
@@ -56,11 +61,12 @@ class ScribblyOverlay {
     }
     this.ctx = ctx;
     this.toolbar = this.createToolbar();
-    this.selectionOverlay = this.createSelectionOverlay();
+    this.summarizeButton = this.toolbar.querySelector('#scribbly-summarize') as HTMLButtonElement;
+    this.selectionRect = this.createSelectionRect();
     this.panel = this.createPanel();
     this.panelBody = this.panel.querySelector('.scribbly-panel-body') as HTMLParagraphElement;
 
-    this.container.append(this.canvas, this.selectionOverlay, this.toolbar, this.panel);
+    this.container.append(this.canvas, this.selectionRect, this.toolbar, this.panel);
     document.documentElement.append(this.container);
     this.toolbar.querySelector(`button[data-tool="${this.tool}"]`)?.classList.add('active');
 
@@ -96,11 +102,14 @@ class ScribblyOverlay {
         <button data-tool="rectangle" aria-label="Rectangle">▭</button>
         <button data-tool="eraser" aria-label="Eraser">🧽</button>
       </div>
+      <div class="scribbly-toolbar-actions">
+        <button id="scribbly-summarize" type="button">Summarize</button>
+      </div>
     `;
     return toolbar;
   }
 
-  private createSelectionOverlay() {
+  private createSelectionRect() {
     const rect = document.createElement('div');
     rect.className = 'scribbly-selection-rect';
     rect.style.display = 'none';
@@ -112,7 +121,7 @@ class ScribblyOverlay {
     panel.id = '__scribbly-panel__';
     panel.innerHTML = `
       <header class="scribbly-panel-header">Pinned Highlight</header>
-      <p class="scribbly-panel-body scribbly-panel-placeholder">Highlight or draw a rectangle to pin text.</p>
+      <p class="scribbly-panel-body scribbly-panel-placeholder">Highlight or draw a rectangle to capture text.</p>
     `;
     return panel;
   }
@@ -121,15 +130,14 @@ class ScribblyOverlay {
     window.addEventListener('resize', () => this.resize());
     window.addEventListener('scroll', () => {
       this.redraw();
-      if (this.rectSelection) {
-        this.updateSelectionOverlay(this.rectSelection);
-      }
+      if (this.rectSelection) this.updateSelectionOverlay(this.rectSelection);
     });
     this.canvas.addEventListener('pointerdown', (event) => this.onPointerDown(event));
     this.canvas.addEventListener('pointermove', (event) => this.onPointerMove(event));
     this.canvas.addEventListener('pointerup', (event) => this.onPointerUp(event));
     this.canvas.addEventListener('pointerleave', (event) => this.onPointerUp(event));
     this.toolbar.addEventListener('click', (event) => this.onToolbarClick(event));
+    this.summarizeButton.addEventListener('click', () => void this.handleSummarizeClick());
 
     chrome.runtime.onMessage.addListener((message) => {
       if (message?.type === 'scribbly:overlay-toggle') {
@@ -144,12 +152,13 @@ class ScribblyOverlay {
         this.toggle(true);
         this.setTool(message.tool);
       }
-      if (message?.type === 'scribbly:overlay-command') {
-        this.toggle(true);
-        this.runCommand(message.command);
-      }
       if (message?.type === 'scribbly:summary-ready' && message.summary?.url === location.href) {
         if (!this.lastSummaryRequestId || message.summary.requestId === this.lastSummaryRequestId) {
+          console.info('[scribbly] background summary ready', {
+            preview: message.summary.summary.slice(0, 200),
+            length: message.summary.summary.length,
+            requestId: message.summary.requestId,
+          });
           this.updatePanelContent(formatSummaryAsBullets(message.summary.summary));
           this.lastSummaryRequestId = null;
         }
@@ -178,7 +187,7 @@ class ScribblyOverlay {
     const { x, y } = this.getCanvasCoordinates(event);
     if (this.tool === 'rectangle') {
       this.rectSelection = { start: { x, y }, current: { x, y } };
-      this.selectionOverlay.style.display = 'block';
+      this.selectionRect.style.display = 'block';
       this.updateSelectionOverlay(this.rectSelection);
       return;
     }
@@ -186,11 +195,11 @@ class ScribblyOverlay {
     const width = this.tool === 'highlighter' ? 18 : ERASER_SIZE;
     const stroke: DrawingStroke = {
       id: crypto.randomUUID(),
-      color: HIGHLIGHTER_COLOR,
+      color: this.tool === 'highlighter' ? HIGHLIGHTER_COLOR : 'rgba(255,255,255,1)',
       width,
       opacity: this.tool === 'highlighter' ? 0.35 : 1,
       points: [{ x, y }],
-      tool: this.tool
+      tool: this.tool,
     };
     this.currentStroke = stroke;
     this.strokeStack = [];
@@ -217,20 +226,28 @@ class ScribblyOverlay {
     if (this.tool === 'rectangle') {
       if (this.rectSelection) {
         const rect = this.buildRectPayload(this.rectSelection.start, this.rectSelection.current);
-        this.selectionOverlay.style.display = 'none';
+        this.selectionRect.style.display = 'none';
         this.rectSelection = null;
-        if (rect.width > 1 && rect.height > 1) {
+        if (rect.width > 2 && rect.height > 2) {
           const text = extractTextFromRect(rect);
-          if (text) {
+        if (text) {
+          console.info('[scribbly] rectangle captured text', {
+            preview: text.slice(0, 160),
+            length: text.length,
+          });
+            this.updatePanelContent(text);
+            this.pendingSelection = { text, rect };
             const requestId = this.sendSummaryRequest({ text, source: 'rectangle', rect });
-            if (requestId) {
-              this.lastSummaryRequestId = requestId;
-            }
+            if (requestId) this.lastSummaryRequestId = requestId;
+          } else {
+            console.warn('[scribbly] rectangle selection produced empty text', rect);
           }
           this.addRectangleStroke(rect);
+        } else {
+          console.info('[scribbly] rectangle selection ignored (too small)', rect);
         }
       } else {
-        this.selectionOverlay.style.display = 'none';
+        this.selectionRect.style.display = 'none';
       }
       return;
     }
@@ -245,10 +262,16 @@ class ScribblyOverlay {
       if (rect) {
         const text = extractTextFromRect(rect);
         if (text) {
+          console.info('[scribbly] highlighter captured text', {
+            preview: text.slice(0, 160),
+            length: text.length,
+          });
+          this.updatePanelContent(text);
+          this.pendingSelection = { text, rect };
           const requestId = this.sendSummaryRequest({ text, source: 'selection', rect });
-          if (requestId) {
-            this.lastSummaryRequestId = requestId;
-          }
+          if (requestId) this.lastSummaryRequestId = requestId;
+        } else {
+          console.warn('[scribbly] highlighter stroke produced empty text');
         }
       }
     }
@@ -256,39 +279,277 @@ class ScribblyOverlay {
   }
 
   private onToolbarClick(event: MouseEvent) {
-    const target = event.target as HTMLElement | null;
-    if (!target) return;
+    const button = (event.target as HTMLElement).closest<HTMLButtonElement>('button[data-tool]');
+    if (!button) return;
+    const requestedTool = button.getAttribute('data-tool') as DrawingTool | null;
+    if (!requestedTool) return;
+    this.setTool(requestedTool);
+    this.toolbar.querySelectorAll<HTMLButtonElement>('button[data-tool]').forEach((element) => {
+      element.classList.toggle('active', element === button);
+    });
+  }
 
-    const tool = target.getAttribute('data-tool') as DrawingTool | null;
-    if (tool) {
-      this.setTool(tool);
+  private summarizeSelection() {
+    const selection = window.getSelection();
+    if (!selection) {
+      console.warn('[scribbly] summarizeSelection called without selection');
       return;
     }
-
-    const action = target.getAttribute('data-action');
-    switch (action) {
-      case 'undo':
-        this.undo();
-        break;
-      case 'redo':
-        this.redo();
-        break;
-      case 'clear':
-        this.clear();
-        break;
-      case 'summarize-selection':
-        this.summarizeSelection();
-        break;
-      default:
-        break;
+    const text = selection.toString().trim();
+    if (!text) {
+      console.warn('[scribbly] summarizeSelection empty selection');
+      return;
     }
+    const rect = this.serializeSelectionRect(selection);
+    console.info('[scribbly] summarizeSelection captured text', {
+      preview: text.slice(0, 160),
+      length: text.length,
+      rect,
+    });
+    this.updatePanelContent(text);
+    this.pendingSelection = { text, rect };
+    const requestId = this.sendSummaryRequest({ text, source: 'selection', rect });
+    if (requestId) this.lastSummaryRequestId = requestId;
+  }
+
+  private async handleSummarizeClick() {
+    const latest = this.pendingSelection?.text ?? extractCurrentSelection();
+    if (!latest) {
+      this.updatePanelContent('Select text with the rectangle tool, then press Summarize.');
+      console.warn('[scribbly] Summarize button clicked without pending selection');
+      return;
+    }
+    this.updatePanelContent('Summarizing highlight...');
+    try {
+      const summary = await summarizeText(latest);
+      console.info('[scribbly] local summarizeText result', {
+        preview: summary.slice(0, 200),
+        length: summary.length,
+      });
+      this.updatePanelContent(summary);
+      console.info('[scribbly] summarize button succeeded');
+    } catch (error) {
+      console.error('[scribbly] Summarizer API error', error);
+      this.updatePanelContent('Unable to summarize this highlight.');
+    }
+  }
+
+  private sendSummaryRequest({
+    text,
+    source,
+    rect,
+  }: {
+    text: string;
+    source: SummaryRequestPayload['source'];
+    rect?: RectPayload;
+  }): string | null {
+    const trimmedText = text.trim();
+    if (!trimmedText) return null;
+    console.info('[scribbly] requesting summary', {
+      source,
+      length: trimmedText.length,
+      preview: trimmedText.slice(0, 160),
+    });
+    const payload: SummaryRequestPayload = {
+      requestId: crypto.randomUUID(),
+      text: trimmedText,
+      url: location.href,
+      title: document.title,
+      source,
+      rect,
+      triggeredAt: Date.now(),
+    };
+    void sendMessage({ type: 'scribbly:request-summary', payload });
+    return payload.requestId;
+  }
+
+  private addRectangleStroke(rect: RectPayload) {
+    const points = [
+      { x: rect.x, y: rect.y },
+      { x: rect.x + rect.width, y: rect.y },
+      { x: rect.x + rect.width, y: rect.y + rect.height },
+      { x: rect.x, y: rect.y + rect.height },
+      { x: rect.x, y: rect.y },
+    ];
+    const stroke: DrawingStroke = {
+      id: crypto.randomUUID(),
+      color: RECTANGLE_STROKE_COLOR,
+      width: 2,
+      opacity: 1,
+      points,
+      tool: 'rectangle',
+    };
+    this.strokes.push(stroke);
+    this.strokeStack = [];
+    this.redraw();
+    this.persistDrawing();
+  }
+
+  private buildRectPayload(
+    start: { x: number; y: number },
+    current: { x: number; y: number },
+  ): RectPayload {
+    const left = Math.min(start.x, current.x);
+    const top = Math.min(start.y, current.y);
+    return {
+      x: left,
+      y: top,
+      width: Math.abs(current.x - start.x),
+      height: Math.abs(current.y - start.y),
+    };
+  }
+
+  private updateSelectionOverlay(selection: {
+    start: { x: number; y: number };
+    current: { x: number; y: number };
+  }) {
+    const left = Math.min(selection.start.x, selection.current.x) - window.scrollX;
+    const top = Math.min(selection.start.y, selection.current.y) - window.scrollY;
+    const width = Math.abs(selection.current.x - selection.start.x);
+    const height = Math.abs(selection.current.y - selection.start.y);
+    this.selectionRect.style.left = `${left}px`;
+    this.selectionRect.style.top = `${top}px`;
+    this.selectionRect.style.width = `${width}px`;
+    this.selectionRect.style.height = `${height}px`;
+  }
+
+  private drawStroke(stroke: DrawingStroke) {
+    this.ctx.save();
+    this.ctx.lineJoin = 'round';
+    this.ctx.lineCap = 'round';
+    this.ctx.lineWidth = stroke.width;
+
+    if (stroke.tool === 'eraser') {
+      this.ctx.globalCompositeOperation = 'destination-out';
+      this.ctx.strokeStyle = 'rgba(0,0,0,1)';
+      this.ctx.globalCompositeOperation = 'source-over';
+      this.ctx.strokeStyle = 'rgba(255,255,255,1)';
+    } else if (stroke.tool === 'rectangle') {
+      this.ctx.globalCompositeOperation = 'source-over';
+      this.ctx.strokeStyle = RECTANGLE_STROKE_COLOR;
+      this.ctx.fillStyle = RECTANGLE_FILL_COLOR;
+    } else {
+      this.ctx.globalCompositeOperation = 'source-over';
+      this.ctx.strokeStyle = HIGHLIGHTER_COLOR;
+    }
+
+    const viewportPoints = stroke.points.map((point) => this.toViewportPoint(point));
+    const path = this.createViewportPath(viewportPoints);
+    this.ctx.stroke(path);
+    if (stroke.tool === 'rectangle') {
+      this.ctx.fill(path);
+    }
+    this.ctx.restore();
+  }
+
+  private createViewportPath(points: Array<{ x: number; y: number }>) {
+    const path = new Path2D();
+    if (points.length === 0) return path;
+    const [start, ...rest] = points;
+    path.moveTo(start.x, start.y);
+    rest.forEach((point) => path.lineTo(point.x, point.y));
+    return path;
+  }
+
+  private redraw() {
+    this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+    this.strokes.forEach((stroke) => this.drawStroke(stroke));
+  }
+
+  private getCanvasCoordinates(event: PointerEvent) {
+    return {
+      x: event.clientX + window.scrollX,
+      y: event.clientY + window.scrollY,
+    };
+  }
+
+  private toViewportPoint(point: { x: number; y: number }) {
+    return {
+      x: point.x - window.scrollX,
+      y: point.y - window.scrollY,
+    };
+  }
+
+  private rectFromPoints(points: Array<{ x: number; y: number }>): RectPayload | null {
+    if (points.length < 2) return null;
+    let minX = Number.POSITIVE_INFINITY;
+    let minY = Number.POSITIVE_INFINITY;
+    let maxX = Number.NEGATIVE_INFINITY;
+    let maxY = Number.NEGATIVE_INFINITY;
+    points.forEach((point) => {
+      minX = Math.min(minX, point.x);
+      minY = Math.min(minY, point.y);
+      maxX = Math.max(maxX, point.x);
+      maxY = Math.max(maxY, point.y);
+    });
+    return {
+      x: minX,
+      y: minY,
+      width: maxX - minX,
+      height: maxY - minY,
+    };
+  }
+
+  private async persistDrawing() {
+    const record: DrawingRecord = {
+      id: this.drawingId ?? crypto.randomUUID(),
+      url: location.href,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      strokes: this.strokes,
+      imageDataUrl: this.canvas.toDataURL('image/png'),
+    };
+    this.drawingId = record.id;
+    void sendMessage({ type: 'scribbly:save-drawing', drawing: record });
+  }
+
+  private async restoreDrawing() {
+    void sendMessage({ type: 'scribbly:fetch-drawings', url: location.href });
+  }
+
+  private loadDrawing(record: DrawingRecord) {
+    this.drawingId = record.id;
+    this.strokes = record.strokes ?? [];
+    this.redraw();
+  }
+
+  private serializeSelectionRect(selection: Selection): RectPayload | undefined {
+    if (selection.rangeCount === 0) return undefined;
+    const rect = selection.getRangeAt(0).getBoundingClientRect();
+    if (!rect) return undefined;
+    return {
+      x: rect.x,
+      y: rect.y,
+      width: rect.width,
+      height: rect.height,
+    };
+  }
+
+  toggle(visible: boolean) {
+    this.visible = visible;
+    if (visible) {
+      this.show();
+    } else {
+      this.hide();
+    }
+  }
+
+  private show() {
+    this.container.style.display = 'block';
+    this.container.setAttribute('data-visible', 'true');
+    this.container.style.pointerEvents = 'auto';
+  }
+
+  private hide() {
+    this.container.style.display = 'none';
+    this.container.setAttribute('data-visible', 'false');
+    this.container.style.pointerEvents = 'none';
+    this.selectionRect.style.display = 'none';
+    this.rectSelection = null;
   }
 
   private setTool(tool: DrawingTool) {
     this.tool = tool;
-    this.toolbar
-      .querySelectorAll<HTMLButtonElement>('button[data-tool]')
-      .forEach((btn) => btn.classList.toggle('active', btn.dataset.tool === tool));
   }
 
   private runCommand(command: 'undo' | 'redo' | 'clear' | 'summarize-selection') {
@@ -330,250 +591,16 @@ class ScribblyOverlay {
     this.strokes = [];
     this.strokeStack = [];
     this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
-    this.selectionOverlay.style.display = 'none';
+    this.selectionRect.style.display = 'none';
     this.rectSelection = null;
+    this.persistDrawing();
     this.updatePanelContent('');
-    this.persistDrawing();
-  }
-
-  private summarizeSelection() {
-    const selection = window.getSelection();
-    if (!selection) return;
-    const text = selection.toString().trim();
-    if (!text) return;
-    const requestId = this.sendSummaryRequest({
-      text,
-      source: 'selection',
-      rect: this.serializeSelectionRect(selection)
-    });
-    if (requestId) {
-      this.lastSummaryRequestId = requestId;
-    }
-  }
-
-  private sendSummaryRequest({
-    text,
-    source,
-    rect
-  }: {
-    text: string;
-    source: SummaryRequestPayload['source'];
-    rect?: RectPayload;
-  }): string | null {
-    const trimmedText = text.trim();
-    if (!trimmedText) return null;
-    this.updatePanelContent('Summarizing highlight...');
-    const payload: SummaryRequestPayload = {
-      requestId: crypto.randomUUID(),
-      text: trimmedText,
-      url: location.href,
-      title: document.title,
-      source,
-      rect,
-      triggeredAt: Date.now()
-    };
-    void sendMessage({ type: 'scribbly:request-summary', payload });
-    return payload.requestId;
-  }
-
-  private buildRectPayload(
-    start: { x: number; y: number },
-    end: { x: number; y: number }
-  ): RectPayload {
-    const left = Math.min(start.x, end.x);
-    const top = Math.min(start.y, end.y);
-    return {
-      x: left,
-      y: top,
-      width: Math.abs(end.x - start.x),
-      height: Math.abs(end.y - start.y)
-    };
-  }
-
-  private addRectangleStroke(rect: RectPayload) {
-    const points = [
-      { x: rect.x, y: rect.y },
-      { x: rect.x + rect.width, y: rect.y },
-      { x: rect.x + rect.width, y: rect.y + rect.height },
-      { x: rect.x, y: rect.y + rect.height },
-      { x: rect.x, y: rect.y }
-    ];
-    const stroke: DrawingStroke = {
-      id: crypto.randomUUID(),
-      color: RECTANGLE_BORDER_COLOR,
-      width: RECTANGLE_BORDER_WIDTH,
-      opacity: 1,
-      points,
-      tool: 'rectangle'
-    };
-    this.strokes.push(stroke);
-    this.strokeStack = [];
-    this.redraw();
-    this.persistDrawing();
-  }
-
-  private updateSelectionOverlay(selection: {
-    start: { x: number; y: number };
-    current: { x: number; y: number };
-  }) {
-    const left = Math.min(selection.start.x, selection.current.x) - window.scrollX;
-    const top = Math.min(selection.start.y, selection.current.y) - window.scrollY;
-    const width = Math.abs(selection.current.x - selection.start.x);
-    const height = Math.abs(selection.current.y - selection.start.y);
-    this.selectionOverlay.style.left = `${left}px`;
-    this.selectionOverlay.style.top = `${top}px`;
-    this.selectionOverlay.style.width = `${width}px`;
-    this.selectionOverlay.style.height = `${height}px`;
-  }
-
-  private createViewportPath(points: Array<{ x: number; y: number }>) {
-    const path = new Path2D();
-    if (points.length === 0) return path;
-    const [start, ...rest] = points;
-    path.moveTo(start.x, start.y);
-    rest.forEach((point) => path.lineTo(point.x, point.y));
-    return path;
-  }
-
-  private drawStroke(stroke: DrawingStroke) {
-    this.ctx.save();
-    this.ctx.lineJoin = 'round';
-    this.ctx.lineCap = 'round';
-    this.ctx.lineWidth = stroke.width;
-
-    if (stroke.tool === 'rectangle') {
-      const rect = this.rectFromPoints(stroke.points);
-      if (rect) {
-        const left = rect.x - window.scrollX;
-        const top = rect.y - window.scrollY;
-        this.ctx.globalCompositeOperation = 'source-over';
-        this.ctx.fillStyle = RECTANGLE_FILL_COLOR;
-        this.ctx.strokeStyle = RECTANGLE_BORDER_COLOR;
-        this.ctx.lineWidth = RECTANGLE_BORDER_WIDTH;
-        this.ctx.beginPath();
-        this.ctx.rect(left, top, rect.width, rect.height);
-        this.ctx.fill();
-        this.ctx.stroke();
-      }
-      this.ctx.restore();
-      return;
-    }
-
-    if (stroke.tool === 'eraser') {
-      this.ctx.globalCompositeOperation = 'destination-out';
-      this.ctx.strokeStyle = 'rgba(0,0,0,1)';
-    } else {
-      this.ctx.globalCompositeOperation = 'source-over';
-      this.ctx.strokeStyle = stroke.color;
-    }
-
-    const viewportPoints = stroke.points.map((point) => this.toViewportPoint(point));
-    const path = this.createViewportPath(viewportPoints);
-    this.ctx.stroke(path);
-    this.ctx.restore();
-  }
-
-  private redraw() {
-    this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
-    this.strokes.forEach((stroke) => this.drawStroke(stroke));
-  }
-
-  private getCanvasCoordinates(event: PointerEvent) {
-    return {
-      x: event.clientX + window.scrollX,
-      y: event.clientY + window.scrollY
-    };
-  }
-
-  private toViewportPoint(point: { x: number; y: number }) {
-    return {
-      x: point.x - window.scrollX,
-      y: point.y - window.scrollY
-    };
-  }
-
-  private rectFromPoints(points: Array<{ x: number; y: number }>): RectPayload | null {
-    if (points.length < 2) return null;
-    let minX = Number.POSITIVE_INFINITY;
-    let minY = Number.POSITIVE_INFINITY;
-    let maxX = Number.NEGATIVE_INFINITY;
-    let maxY = Number.NEGATIVE_INFINITY;
-    points.forEach((point) => {
-      minX = Math.min(minX, point.x);
-      minY = Math.min(minY, point.y);
-      maxX = Math.max(maxX, point.x);
-      maxY = Math.max(maxY, point.y);
-    });
-    return {
-      x: minX,
-      y: minY,
-      width: maxX - minX,
-      height: maxY - minY
-    };
-  }
-
-  private async persistDrawing() {
-    const record: DrawingRecord = {
-      id: this.drawingId ?? crypto.randomUUID(),
-      url: location.href,
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-      strokes: this.strokes,
-      imageDataUrl: this.canvas.toDataURL('image/png')
-    };
-    this.drawingId = record.id;
-    void sendMessage({ type: 'scribbly:save-drawing', drawing: record });
-  }
-
-  private async restoreDrawing() {
-    void sendMessage({ type: 'scribbly:fetch-drawings', url: location.href });
-  }
-
-  private loadDrawing(record: DrawingRecord) {
-    this.drawingId = record.id;
-    this.strokes = record.strokes ?? [];
-    this.redraw();
-  }
-
-  private serializeSelectionRect(selection: Selection): RectPayload | undefined {
-    if (selection.rangeCount === 0) return undefined;
-    const rect = selection.getRangeAt(0).getBoundingClientRect();
-    if (!rect) return undefined;
-    return {
-      x: rect.x + window.scrollX,
-      y: rect.y + window.scrollY,
-      width: rect.width,
-      height: rect.height
-    };
-  }
-
-  toggle(visible: boolean) {
-    this.visible = visible;
-    if (visible) {
-      this.show();
-    } else {
-      this.hide();
-    }
-  }
-
-  private show() {
-    this.container.style.display = 'block';
-    this.container.setAttribute('data-visible', 'true');
-    this.container.style.pointerEvents = 'auto';
-  }
-
-  private hide() {
-    this.container.style.display = 'none';
-    this.container.setAttribute('data-visible', 'false');
-    this.container.style.pointerEvents = 'none';
-    this.selectionOverlay.style.display = 'none';
-    this.rectSelection = null;
   }
 
   private updatePanelContent(text: string) {
     if (!this.panelBody) return;
     if (!text) {
-      this.panelBody.textContent = 'Highlight or draw a rectangle to pin text.';
+      this.panelBody.textContent = 'Highlight or draw a rectangle to capture text.';
       this.panelBody.classList.add('scribbly-panel-placeholder');
       return;
     }
@@ -582,64 +609,24 @@ class ScribblyOverlay {
   }
 }
 
-function caretRangeAt(pageX: number, pageY: number): Range | null {
-  const viewportX = pageX - window.scrollX;
-  const viewportY = pageY - window.scrollY;
-  const doc = document as unknown as {
-    caretRangeFromPoint?: (x: number, y: number) => Range | null;
-    caretPositionFromPoint?: (x: number, y: number) => { offsetNode: Node; offset: number } | null;
-  };
-  if (typeof doc.caretRangeFromPoint === 'function') {
-    const range = doc.caretRangeFromPoint(viewportX, viewportY);
-    if (range) return range;
-  }
-  if (typeof doc.caretPositionFromPoint === 'function') {
-    const position = doc.caretPositionFromPoint(viewportX, viewportY);
-    if (position) {
-      const range = document.createRange();
-      range.setStart(position.offsetNode, position.offset);
-      range.collapse(true);
-      return range;
-    }
-  }
-  return null;
-}
-
 function extractTextFromRect(rect: RectPayload) {
-  const selection = document.getSelection();
-  if (!selection) return '';
-  selection.removeAllRanges();
-
-  const startRange = caretRangeAt(rect.x + 1, rect.y + 1);
-  const endRange = caretRangeAt(rect.x + rect.width - 1, rect.y + rect.height - 1);
-  if (startRange && endRange) {
-    const range = document.createRange();
-    try {
-      range.setStart(startRange.startContainer, startRange.startOffset);
-      range.setEnd(endRange.startContainer, endRange.startOffset);
-    } catch {
-      range.selectNodeContents(document.body);
-    }
-    selection.addRange(range);
-    const text = range.toString().replace(/\s+/g, ' ').trim();
-    if (text) return text;
-  }
-
+  console.info('[scribbly] extractTextFromRect invoked', rect);
   const collected: string[] = [];
   const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, {
     acceptNode(node) {
-      return node.textContent && node.textContent.trim()
-        ? NodeFilter.FILTER_ACCEPT
-        : NodeFilter.FILTER_REJECT;
-    }
+      const trimmed = node.textContent?.trim();
+      return trimmed ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT;
+    },
   });
+
   const rectRight = rect.x + rect.width;
   const rectBottom = rect.y + rect.height;
   while (walker.nextNode()) {
     const node = walker.currentNode as Text;
     const range = document.createRange();
     range.selectNodeContents(node);
-    const intersects = Array.from(range.getClientRects()).some((client) => {
+    const rects = range.getClientRects();
+    const intersects = Array.from(rects).some((client) => {
       const left = client.left + window.scrollX;
       const right = client.right + window.scrollX;
       const top = client.top + window.scrollY;
@@ -648,10 +635,39 @@ function extractTextFromRect(rect: RectPayload) {
     });
     range.detach();
     if (intersects) {
-      collected.push(node.textContent ?? '');
+      const text = node.textContent ?? '';
+      collected.push(text);
+      const snippet = text.replace(/\s+/g, ' ').trim().slice(0, 120);
+      console.info('[scribbly] walker hit', { snippet, node });
     }
   }
-  return collected.join(' ').replace(/\s+/g, ' ').trim();
+
+  if (collected.length > 0) {
+    const normalized = collected.join(' ').replace(/\s+/g, ' ').trim();
+    if (normalized) {
+      console.info('[scribbly] walker captured text', normalized.slice(0, 240));
+      return normalized;
+    }
+  }
+
+  const centerX = rect.x + rect.width / 2 - window.scrollX;
+  const centerY = rect.y + rect.height / 2 - window.scrollY;
+  const element = document.elementFromPoint(centerX, centerY);
+  if (element && element.textContent) {
+    const text = element.textContent.replace(/\s+/g, ' ').trim();
+    if (text) {
+      console.info('[scribbly] elementFromPoint captured text', { text, element });
+      return text;
+    }
+  }
+
+  console.warn('[scribbly] no text captured for rect', rect);
+  return '';
+}
+
+function extractCurrentSelection() {
+  const selection = document.getSelection();
+  return selection ? selection.toString().trim() : '';
 }
 
 function formatSummaryAsBullets(summary: string) {
@@ -660,9 +676,7 @@ function formatSummaryAsBullets(summary: string) {
     .split(/\r?\n/)
     .map((line) => line.trim())
     .filter(Boolean);
-  if (lines.length === 0) {
-    return summary.trim();
-  }
+  if (lines.length === 0) return summary.trim();
   const normalized = lines.map((line) => (line.startsWith('-') ? line : `- ${line}`));
   return normalized.join('\n');
 }

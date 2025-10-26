@@ -40,6 +40,27 @@
   gap: 8px;
 }
 
+.scribbly-toolbar-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.scribbly-toolbar-actions button {
+  flex: 1;
+  background: #1d4ed8;
+  color: #f8fafc;
+  font-weight: 600;
+  border-radius: 8px;
+  border: none;
+  padding: 8px 10px;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.scribbly-toolbar-actions button:hover {
+  background: #1e40af;
+}
+
 #__scribbly-toolbar__ button {
   appearance: none;
   border: none;
@@ -49,7 +70,9 @@
   font-size: 16px;
   padding: 6px 10px;
   cursor: pointer;
-  transition: background 0.2s ease, transform 0.2s ease;
+  transition:
+    background 0.2s ease,
+    transform 0.2s ease;
 }
 
 #__scribbly-toolbar__ button:hover {
